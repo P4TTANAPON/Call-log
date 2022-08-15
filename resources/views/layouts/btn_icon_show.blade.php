@@ -1,0 +1,1 @@
+<a href="{{ $url }}"><span class="glyphicon glyphicon-list-alt" data-toggle="tooltip" title="Show"></span></a>

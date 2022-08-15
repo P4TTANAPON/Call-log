@@ -1,0 +1,1 @@
+<a href="{{ url($url) }}" class="btn btn-default"><span class="glyphicon glyphicon-file"></span> Create</a>
