@@ -52,6 +52,7 @@ resources/views/dashboard/filter.blade copy 2.php
 app/Http/Controllers/DashboardController copy.php
 app/Http/Controllers/JobController.php.bak
 resources/views/dashboard/filter.blade copy.php
+resources/views/dashboard/index.blade copy.php
 resources/views/onsite/test.blade.php
 config/app - Copy.php
 
