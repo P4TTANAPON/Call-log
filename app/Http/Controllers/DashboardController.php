@@ -54,6 +54,7 @@ class DashboardController extends Controller
         }
         
         $lookBack = $this->lookback($request);
+        $date = $this->rangeDate($request,$lookBack);
         
         $cc = $this->callInCase($request);
         $job_count = $cc['sum'];
@@ -169,6 +170,7 @@ class DashboardController extends Controller
             'sumSys' => $sumSys,
             'sumNon' => $sumNon,
             //'call_categories' => CallCategory::orderBy('code')->get(),
+            'date' => $date,
         ]);
     }
 

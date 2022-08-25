@@ -30,12 +30,26 @@ class DepartmentController extends Controller
 			->selectRaw('departments.*, COUNT(jobs.id) as works')
 			->join('jobs','departments.id','=','jobs.department_id')
 			->whereBetween('jobs.created_at', [date('Y-m-d 00:00:00', strtotime($start)), date('Y-m-d 23:59:59', strtotime($end))])
+			->whereNull('jobs.deleted_at')
 			->groupBy('departments.id')
-			->orderBy('works', 'desc');
+			->orderBy(DB::Raw('COUNT(jobs.id)'), 'desc');
 
 		$top5 = $temp->take(5)->get();
 		$data = $temp->paginate(25);
-		
+
+		if(isset($request->department)){
+			$department = $request->department;
+		} elseif($temp->count() > 0) {
+			$department = $temp->first()->id;
+		}
+		if($temp->count() > 0){
+			$depName = Department::find($department)->name;
+			$calls = $this->callin($department,$start,$end);
+			$calls = $calls->get();
+		} else {
+			$depName = "";
+			$calls = [];
+		}
 		$lava = new Lavacharts;
 		$chartData = $lava -> DataTable();
 		$chartData->addStringColumn('Department')
@@ -61,11 +75,34 @@ class DepartmentController extends Controller
 			]
 		]);
 
+        // Amount of cases grouping by call-in case
+        $group_call = $lava->DataTable();
+        $group_call->addStringColumn('Problem')->addNumberColumn('Jobs');
+
+        foreach ($calls as $call) {
+            $group_call->addRow([$call->problem_group, $call->works]);
+        }
+
+        $lava->DonutChart('Call_Category', $group_call, [
+            'legend' => [
+                'position' => 'left',
+            ],
+            'chartArea' => [
+                'top' => 5,
+                'left' => 0,
+                'width' => '100%',
+                'height' => 320
+            ]
+        ]);
+
 		return view('department.index')
 				->with('departments',$data)
 				->with('start',$start)
 				->with('end',$end)
-				->with('lava', $lava);
+				->with('lava', $lava)
+				->with('calls', $calls)
+				->with('depName', $depName)
+				->with('Call_Category', );
 	}
 
     public function getdropdown(Request $request)
@@ -107,4 +144,17 @@ class DepartmentController extends Controller
 		
 		return $html;
 	}
+
+	public function callin($department,$start,$end){
+		$jobs = DB::table('call_categories')
+					->selectRaw('call_categories.*, count(jobs.id) as works')
+					->join('jobs','call_categories.id','=',DB::Raw('ifnull(jobs.sa_rw_call_category_id,call_category_id)'))
+					->where('jobs.department_id','=',$department)
+					->whereBetween('jobs.created_at', [date('Y-m-d 00:00:00', strtotime($start)), date('Y-m-d 23:59:59', strtotime($end))])
+					->whereNull('jobs.deleted_at')
+					->groupBy('call_categories.id')
+					->orderBy('works', 'desc');
+		return $jobs;
+	}
+
 }

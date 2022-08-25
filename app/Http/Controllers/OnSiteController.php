@@ -47,7 +47,7 @@ class OnSiteController extends Controller
     /*
     fn queryData
     @param $department = department_id
-    @param $sts = [0=>24hr, 1=>48hr]
+    @param $sts = [0=> *time*<24hr, 1=> 24hr<*time*<48hr, 2=> 48hr<*time*<aaa
     @return $data
     */
     public function queryData(Request $request, $sts){
@@ -82,7 +82,7 @@ class OnSiteController extends Controller
         $col = $this->getExcelColumn();
         $c = 0;
         $row = 1;
-        $nc = 15;
+        $nc = 19;
 
         $works = $excOnsite->getSheet(0);
         $works->setTitle('jobs_onsite');
@@ -102,6 +102,10 @@ class OnSiteController extends Controller
         $works->setCellValue($col[$c++] . $row, 'โทร');
         $works->setCellValue($col[$c++] . $row, 'Ticket No.');
         $works->setCellValue($col[$c++] . $row, 'ชื่อผู้รับแจ้ง');
+        $works->setCellValue($col[$c++] . $row, 'อุปกรณ์ที่เกี่ยวข้อง');
+        $works->setCellValue($col[$c++] . $row, 'รุ่นอุปกรณ์');
+        $works->setCellValue($col[$c++] . $row, 'หมายเลขอุปกรณ์');
+        $works->setCellValue($col[$c++] . $row, 'Ticket Vender');
         $works->setCellValue($col[$c++] . $row, 'รายละเอียดปัญหา');
         $works->setCellValue($col[$c++] . $row, 'บันทึกการแก้ปัญหา');
         $works->setCellValue($col[$c++] . $row, 'วันที่แก้ไขเสร็จ');
@@ -111,7 +115,6 @@ class OnSiteController extends Controller
         $works->setCellValue($col[$c++] . $row, 'ระบบงานหลัก');
         $works->setCellValue($col[$c++] . $row, 'หมายเหตุ');
 
-        
         $n = 1;
         foreach ($jobs as $job){
             $row++;
@@ -129,6 +132,10 @@ class OnSiteController extends Controller
                                 ->where('stack_number','=','1')
                                 ->first();
             $works->setCellValue($col[$c++] . $row, $user->user->name);
+            $works->setCellValue($col[$c++] . $row, empty($job->scsjob->product)? "" : $job->scsjob->product);
+            $works->setCellValue($col[$c++] . $row, empty($job->scsjob->model_part_number)? "" : $job->scsjob->model_part_number);
+            $works->setCellValue($col[$c++] . $row, empty($job->scsjob->serial_number)? "" : $job->scsjob->serial_number);
+            $works->setCellValue($col[$c++] . $row, empty($job->scsjob->malfunction)? "" : $job->scsjob->malfunction);
             $works->setCellValue($col[$c++] . $row, $job->description);
                 $cause = "";
                 $cause .= empty($job->scsjob->cause)? "": $job->scsjob->cause;
@@ -156,14 +163,17 @@ class OnSiteController extends Controller
 
             $effect_row = $col[0] . $row . ':' . $col[$c - 1] . $row;
 
+            $COLUMN_TEL = 5;
+            $COLUMN_TICKET_VENDER = 11;
             
-            $works->getStyle($col[5].$row)->getNumberFormat()->setFormatCode('0000000000');
+            $works->getStyle($col[$COLUMN_TEL].$row)->getNumberFormat()->setFormatCode('0000000000');
             $works->getStyle($effect_row)->getAlignment()->setWrapText(true);
             $works->getStyle($effect_row)->getAlignment()->setVertical(\PHPExcel_Style_Alignment::VERTICAL_TOP);
-            $works->getStyle($col[5].$row)->getAlignment()->setHorizontal(\PHPExcel_Style_Alignment::HORIZONTAL_LEFT);
+            $works->getStyle($col[$COLUMN_TEL].$row)->getAlignment()->setHorizontal(\PHPExcel_Style_Alignment::HORIZONTAL_LEFT);
+            $works->getStyle($col[$COLUMN_TICKET_VENDER].$row)->getAlignment()->setHorizontal(\PHPExcel_Style_Alignment::HORIZONTAL_LEFT);
             $works->getStyle($effect_row)->getBorders()->getAllBorders()->setBorderStyle(\PHPExcel_Style_Border::BORDER_THIN);
         }
-        $header = 'a1:p2';
+        $header = 'a1:t2';
         $style = array(
             'font' => array('bold' => true,),
             'alignment' => array('horizontal' => \PHPExcel_Style_Alignment::HORIZONTAL_CENTER,),
@@ -180,6 +190,10 @@ class OnSiteController extends Controller
         $works->getColumnDimension($col[$c++])->setAutoSize(true);
         $works->getColumnDimension($col[$c++])->setAutoSize(true);
         $works->getColumnDimension($col[$c++])->setWidth(40);
+        $works->getColumnDimension($col[$c++])->setAutoSize(true);
+        $works->getColumnDimension($col[$c++])->setAutoSize(true);
+        $works->getColumnDimension($col[$c++])->setAutoSize(true);
+        $works->getColumnDimension($col[$c++])->setAutoSize(true);
         $works->getColumnDimension($col[$c++])->setAutoSize(true);
         $works->getColumnDimension($col[$c++])->setAutoSize(true);
         $works->getColumnDimension($col[$c++])->setAutoSize(true);

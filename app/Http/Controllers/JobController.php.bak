@@ -19,10 +19,6 @@ use App\Informer;
 use App\ScsJob;
 use App\JobStack;
 use App\User;
-use App\HardwareItem;
-use App\SolveDescription;
-use App\Traits\queryAlmostDataTrait;
-use App\Traits\dateDiffTrait;
 
 use DB;
 use Mail;
@@ -37,7 +33,6 @@ class JobController extends Controller
         $this->middleware('auth');
     }
 
-    use queryAlmostDataTrait;
     public function index(Request $request)
     {
         if (($request->get('job') == 'closed' or $request->get('job') == 'all')
@@ -47,7 +42,7 @@ class JobController extends Controller
             $last_day = date('Y-m-d', strtotime('last day of this month'));
 
             return redirect('/job?from=' . $first_day . '&to=' . $last_day . '&job=' . $request->get('job')
-                . '&team=' . $request->get('team') . '&ticket=' . $request->get('ticket') . '&active_user=' . $request->get('active_user')
+                . '&team=' . $request->get('team') . '&ticket=' . $request->get('ticket')
                 . '&project=' . $request->get('project') . '&system=' . $request->get('system')
                 . '&department=' . $request->get('department') . '&call_category=' . $request->get('call_category')
                 . '&description=' . $request->get('description') . '&informer_name=' . $request->get('informer_name')
@@ -55,24 +50,19 @@ class JobController extends Controller
         }
 
         $jobs = $this->queryData($request);
-        $jobs = $jobs->orderBy('created_at', 'desc') ->paginate(100);
-
-        $cAlmostIn = $this->queryDataAlmost($request->get('department'),$request->get('project'),0)->count();
-        $cAlmostEnd = $this->queryDataAlmost($request->get('department'),$request->get('project'),1)->count();
+        $jobs = $jobs->orderBy('created_at', 'desc')
+            ->paginate(100);
 
         return view('job.index', [
             'jobs' => $jobs,
             'departments' => Department::all(),
-            'users' => User::where('deleted_at', '=', null) ->get(),
             'call_categories' => CallCategory::orderBy('code')->get(),
-            'cAlmostIn' => $cAlmostIn,
-            'cAlmostEnd' => $cAlmostEnd,
         ]);
     }
 
     public function create(Request $request)
     {
-        if ($request->user()->team != 'OBS' and $request->user()->team != 'CC' and $request->user()->team != 'DOL') abort(404); //ROOT
+        if ($request->user()->team != 'CC' and $request->user()->team != 'DOL') abort(404);
 
         return view('job.create', [
             'informers' => Informer::orderBy('name')->orderBy('phone_number')->get(),
@@ -102,7 +92,7 @@ class JobController extends Controller
         $jobStack->user_id = $request->user()->id;
         $jobStack->save();
 
-        if ($request->get('tier1_forward') == 'SCS' || $job->call_category_id == '5') {
+        if ($request->get('tier1_forward') == 'SCS') {
             $job->active_operator_id = $request->user()->id;
             $job->save();
             return redirect('/job/' . $job->id . '/edit');
@@ -121,7 +111,7 @@ class JobController extends Controller
 
         $canEdit = $this->editAuth($request, $job);
 
-        if ($canEdit or $request->user()->team == 'OBS') { //ROOT
+        if ($canEdit) {
             return redirect('job/' . $job->id . '/edit');
         } else {
             if ($this->showAuth($request, $job)) {
@@ -144,42 +134,22 @@ class JobController extends Controller
 
     public function edit(Request $request, Job $job)
     {
-        //echo '-' . $request->user()->team . ' : ' . $job;
         $canDelete = $this->deleteAuth($request, $job);
         $canReject = $this->rejectAuth($request, $job);
 
-        if ($request->user()->team == 'OBS') { //ROOT
-            return view('job.edit.index', [
-                'job' => $job,
-                'canDelete' => 1,
-                'canReject' => 1,
-                'departments' => Department::all(),
-                'hardwareItems' => HardwareItem::all(),
-                'call_categories' => CallCategory::orderBy('code')->get(),
-                'systems_ph1' => System::where('phase', 1)->orderBy('flag')->get(),
-                'systems_ph2' => System::where('phase', 2)->orderBy('flag')->get(),
-                'systems_ph3' => System::where('phase', 3)->orderBy('flag')->get(),
-                'systems_ph4' => System::where('phase', 4)->orderBy('flag')->get(),
-                'systems' => System::where('phase', $job->phase)->orderBy('flag')->get(),
-                'solve_descriptions' =>SolveDescription::where('phase', $job->phase)->get(),
-            ]);
-        } else  if ($this->editAuth($request, $job)) {
+        if ($this->editAuth($request, $job)) {
             if ($request->user()->team == 'CC' or $request->user()->team == 'DOL') {
                 return view('job.edit.index', [
                     'job' => $job,
                     'canDelete' => $canDelete,
                     'canReject' => $canReject,
                     'departments' => Department::all(),
-                    'hardwareItems' => HardwareItem::all(),
                     'call_categories' => CallCategory::orderBy('code')->get(),
                     'systems_ph1' => System::where('phase', 1)->orderBy('flag')->get(),
                     'systems_ph2' => System::where('phase', 2)->orderBy('flag')->get(),
                     'systems_ph3' => System::where('phase', 3)->orderBy('flag')->get(),
                     'systems_ph4' => System::where('phase', 4)->orderBy('flag')->get(),
-                    'solve_descriptions' =>SolveDescription::where('phase', $job->phase)->get(),
                 ]);
-                //HardwareItem::where('phase', $request->phase)-> where('departments_id', $request->department)-> where('id', $request->get('id'))->first();
-
             } elseif ($request->user()->team == 'SA') {
                 return view('job.edit.index', [
                     'job' => $job,
@@ -187,14 +157,12 @@ class JobController extends Controller
                     'canReject' => $canReject,
                     'call_categories' => CallCategory::orderBy('code')->get(),
                     'systems' => System::where('phase', $job->phase)->orderBy('flag')->get(),
-                    'solve_descriptions' =>SolveDescription::where('phase', $job->phase)->get(),
                 ]);
             } else {
                 return view('job.edit.index', [
                     'call_categories' => CallCategory::orderBy('code')->get(),
                     'systems' => System::where('phase', $job->phase)->orderBy('flag')->get(),
                     'job' => $job,
-                    'solve_descriptions' =>SolveDescription::where('phase', $job->phase)->get(),
                     'canDelete' => $canDelete,
                     'canReject' => $canReject,
                 ]);
@@ -204,26 +172,8 @@ class JobController extends Controller
         }
     }
 
-    public function queryJobDescription(Request $request)
-    {
-        $jobDescriptions = new Job;
-        $jobDescriptions = Job::where('closed', '1');
-        //$jobDescriptions = $jobDescriptions->where('tier2_solve_description', 'is not null');
-        $jobDescriptions = $jobDescriptions->where('last_operator_team', 'SP');
-        return $jobDescriptions;
-    }
-
     public function update(JobRequest $request, Job $job)
     {
-        if ($request->user()->team == 'OBS') {
-            $job = $this->saveDataCC($request, $job);
-            $job = $this->saveDataSP($request, $job);
-            $job = $this->saveDataSA($request, $job);
-            $job->save();
-
-            return redirect('/job')->with('success', 'Job updated.');
-        }
-
         if (!$this->editAuth($request, $job)) abort(401);
 
         if ($request->user()->team == 'CC' or $request->user()->team == 'DOL') {
@@ -244,7 +194,7 @@ class JobController extends Controller
                     return redirect('/job/' . $job->id . '/edit')->withErrors([$validate]);
                 }
 
-                if ($job->tier1_forward == 'SCS' or $job->call_category_id == '5') {
+                if ($job->tier1_forward == 'SCS') {
                     $validate = $this->validateCCSCS($request);
 
                     if ($validate == 'pass') {
@@ -429,7 +379,6 @@ class JobController extends Controller
         }
     }
 
-    use dateDiffTrait;
     public function exportExcel(Request $request)
     {
         if ($request->user()->team == 'DOL') {
@@ -565,7 +514,7 @@ class JobController extends Controller
             'FIN' => 0, 'MSS' => 0, 'USP' => 0, 'PRC' => 0, 'WAH' => 0, 'VEH' => 0, 'MTN' => 0, 'BLD' => 0, 'ONL' => 0,
             'EPA' => 0, 'SVA' => 0, 'SVC' => 0, 'LIS' => 0, 'GSS' => 0, 'MTD' => 0, 'IES' => 0, 'ADM' => 0, 'MAS' => 0,
             'BCK' => 0, 'SPC' => 0, 'ECH' => 0, 'PLS' => 0, 'EVD' => 0, 'APS' => 0, 'ESP' => 0, 'MIS' => 0, 'SDM' => 0,
-            'MRI' => 0, 'EDM' => 0, 'SDX' => 0, 'LMS' => 0, 'LUS' => 0, 'OMW' => 0, 'DMS' => 0, 'BCK' => 0, 'SVO' => 0, 'SVM' => 0, 'UDM' => 0, 'GIS' => 0, 'SSI' => 0, 'ELM' => 0, 'M84' => 0, 'LSS' => 0, 'EBD' => 0, 'OFL' => 0, 'OFL' => 0
+            'MRI' => 0, 'EDM' => 0, 'SDX' => 0, 'LMS' => 0, 'LUS' => 0, 'OMW' => 0, 'DMS' => 0, 'BCK' => 0
         ];
         $sp_count = array();
         $cc_count = 0;
@@ -641,67 +590,25 @@ class JobController extends Controller
 
 
             //RESULT
-            if($job->call_category_id == 5){
-                //On site service job
-                if ($job->scsjob){
-                    $ews->setCellValue($col[$c++] . $row, $job->scsjob->action_dtm);
-                    if ($job->scsjob->action_dtm != null) {
-                        if ($job->created_at != $job->scsjob->action_dtm) {
-                            $diff = $this->datediff($job->scsjob->action_dtm, $job->created_at);
-                            $ews->setCellValue($col[$c++] . $row, $diff);
-                        } else {
-                            $ews->setCellValue($col[$c++] . $row, "0 Days, 00:00:00");
-                        }
-        
-                        $close_count++;
-                    } else {
-                        $ews->setCellValue($col[$c++] . $row, '');
-                    }
-                }else{
-                    $ews->setCellValue($col[$c++] . $row, $job->closed_at);
-                    if ($job->closed_at != null) {
-                        if ($job->created_at != $job->closed_at) {
-                            $diff = $this->datediff($job->closed_at, $job->created_at);
-                            $ews->setCellValue($col[$c++] . $row, $diff);
-                        } else {
-                            $ews->setCellValue($col[$c++] . $row, "0 Days, 00:00:00");
-                        }
-        
-                        $close_count++;
-                    } else {
-                        $ews->setCellValue($col[$c++] . $row, '');
-                    }
-                }
-                
-            }else{
-                $ews->setCellValue($col[$c++] . $row, $job->closed_at);
-                if ($job->closed_at != null) {
-                    if ($job->created_at != $job->closed_at) {
-                        $diff = $this->datediff($job->closed_at, $job->created_at);
-                        $ews->setCellValue($col[$c++] . $row, $diff);
-                    } else {
-                        $ews->setCellValue($col[$c++] . $row, "0 Days, 00:00:00");
-                    }
-    
-                    $close_count++;
+            $ews->setCellValue($col[$c++] . $row, $job->closed_at);
+
+            if ($job->closed_at != null) {
+                if ($job->created_at != $job->closed_at) {
+                    $diff = $this->datediff($job->closed_at, $job->created_at);
+                    $ews->setCellValue($col[$c++] . $row, $diff);
                 } else {
-                    $ews->setCellValue($col[$c++] . $row, '');
+                    $ews->setCellValue($col[$c++] . $row, "0 Days, 00:00:00");
                 }
+
+                $close_count++;
+            } else {
+                $ews->setCellValue($col[$c++] . $row, '');
             }
-            
 
             $ews->setCellValue($col[$c++] . $row, $job->call_category ? $job->call_category->problem_group : '');
             $ews->setCellValue($col[$c++] . $row, $job->primary_system ? $job->primary_system->flag : '');
             $ews->setCellValue($col[$c++] . $row, $job->secondary_system ? $job->secondary_system->flag : '');
-            if($job->call_category_id == 5){
-                if ($job->scsjob){
-                    $ews->setCellValue($col[$c++] . $row, $job->scsjob->cause . " \n " . $job->scsjob->action);
-                }else{
-                    $ews->setCellValue($col[$c++] . $row, $job->remark);
-                }
-            }else{
-                $ews->setCellValue($col[$c++] . $row, $job->remark);
-            }
+            $ews->setCellValue($col[$c++] . $row, $job->remark);
 
             //SA Review
             $ews->setCellValue($col[$c++] . $row, $job->sa_rw_call_category ? $job->sa_rw_call_category->problem_group : '');
@@ -766,6 +673,7 @@ class JobController extends Controller
                     $st_count++;
                 }
             }
+
         }
 
         //style
@@ -900,6 +808,7 @@ class JobController extends Controller
                         $query->where('closed', true)
                             ->where('last_operator_team', $request->get('team'));
                     }
+
                 })->orWhere(function ($query) use ($request) {
                     if (strpos($request->get('team'), '-')) {
                         $query->where('closed', false)
@@ -908,7 +817,9 @@ class JobController extends Controller
                         $query->where('closed', false)
                             ->where('active_operator_team', $request->get('team'));
                     }
+
                 });
+
             });
         }
 
@@ -1025,17 +936,13 @@ class JobController extends Controller
 
         $close_count = 0;
         $active_count = 0;
-        $call_count = array(
-            '101' => 0, '102' => 0, '103' => 0, '104' => 0, '105' => 0, '106' => 0, '107' => 0,
-            '201' => 0, '202' => 0, '203' => 0, '204' => 0, '205' => 0, '301' => 0, '302' => 0
-        );
-        $system_count = array(
-            'REG' => 0, 'MNG' => 0, 'CTN' => 0, 'BPM' => 0, 'HRM' => 0, 'EXP' => 0, 'INA' => 0, 'INV' => 0,
+        $call_count = array('101' => 0, '102' => 0, '103' => 0, '104' => 0, '105' => 0, '106' => 0, '107' => 0,
+            '201' => 0, '202' => 0, '203' => 0, '204' => 0, '205' => 0, '301' => 0, '302' => 0);
+        $system_count = array('REG' => 0, 'MNG' => 0, 'CTN' => 0, 'BPM' => 0, 'HRM' => 0, 'EXP' => 0, 'INA' => 0, 'INV' => 0,
             'FIN' => 0, 'MSS' => 0, 'USP' => 0, 'PRC' => 0, 'WAH' => 0, 'VEH' => 0, 'MTN' => 0, 'BLD' => 0, 'ONL' => 0,
             'EPA' => 0, 'SVA' => 0, 'SVC' => 0, 'LIS' => 0, 'GSS' => 0, 'MTD' => 0, 'IES' => 0, 'ADM' => 0, 'MAS' => 0,
             'BCK' => 0, 'SPC' => 0, 'ECH' => 0, 'PLS' => 0, 'EVD' => 0, 'APS' => 0, 'ESP' => 0, 'MIS' => 0, 'SDM' => 0,
-            'MRI' => 0, 'EDM' => 0, 'SDX' => 0, 'LMS' => 0, 'LUS' => 0, 'OMW' => 0, 'DMS' => 0, 'BCK' => 0
-        );
+            'MRI' => 0, 'EDM' => 0, 'SDX' => 0, 'LMS' => 0, 'LUS' => 0, 'OMW' => 0, 'DMS' => 0, 'BCK' => 0);
         $sp_count = array();
         $cc_count = 0;
         $sa_count = 0;
@@ -1600,18 +1507,19 @@ class JobController extends Controller
         return $chart;
     }
 
-    // private function datediff($date1, $date2)
-    // {
-    //     $diff = abs(strtotime($date1) - strtotime($date2));
+    private function datediff($date1, $date2)
+    {
+        $diff = abs(strtotime($date1) - strtotime($date2));
 
-    //     return sprintf(
-    //         "%d Days, %s:%s:%s",
-    //         intval($diff / 86400),
-    //         str_pad(intval(($diff % 86400) / 3600), 2, '0', STR_PAD_LEFT),
-    //         str_pad(intval(($diff / 60) % 60), 2, '0', STR_PAD_LEFT),
-    //         str_pad(intval($diff % 60), 2, '0', STR_PAD_LEFT)
-    //     );
-    // }
+        return sprintf
+        (
+            "%d Days, %s:%s:%s",
+            intval($diff / 86400),
+            str_pad(intval(($diff % 86400) / 3600), 2, '0', STR_PAD_LEFT),
+            str_pad(intval(($diff / 60) % 60), 2, '0', STR_PAD_LEFT),
+            str_pad(intval($diff % 60), 2, '0', STR_PAD_LEFT)
+        );
+    }
 
     private function getExcelColumn()
     {
@@ -1640,56 +1548,32 @@ class JobController extends Controller
         }
 
         if ($request->user()->team == 'DOL') {
-            // $dolUsers = User::where('team', 'DOL')->get();
-            // $dolUsersArray = [];
+            $dolUsers = User::where('team', 'DOL')->get();
+            $dolUsersArray = [];
 
-            // foreach ($dolUsers as $dolUser) {
-            //     array_push($dolUsersArray, $dolUser->id);
-            // }
-
-            // $jobs = $jobs->whereIn('create_user_id', $dolUsersArray);
-            $jobs = $jobs->where('description', 'not like','%FIXTRAN%');
-            $jobs = $jobs->where('description', 'not like','%STRUCTURE%');
-        }
-
-
-        if ($request->get('active_user')) {
-            if ($request->get('job') == 'closed') {
-                $jobs = $jobs->where('last_operator_id', '=', $request->get('active_user'));
-            } else if ($request->get('job') == 'active') {
-                $jobs = $jobs->where('active_operator_id', '=', $request->get('active_user'));
-            }else{
-                $jobs = $jobs->where(function ($query) use ($request) {
-                    $query->orWhere(function ($query) use ($request) {
-                        $query ->where('active_operator_id', '=',$request->get('active_user'))
-                        ->where('active_operator_team', '<>','CC');
-                    }) ->orWhere(function ($query) use ($request) {
-                       $query ->where('last_operator_id', '=',  $request->get('active_user'))
-                        ->where('active_operator_id', '=',null);
-                    });
-                });
-
+            foreach ($dolUsers as $dolUser) {
+                array_push($dolUsersArray, $dolUser->id);
             }
+
+            $jobs = $jobs->whereIn('create_user_id', $dolUsersArray);
         }
 
-        if (
-            $request->user()->team != 'CC'
-            and $request->user()->team != 'SP'
-            and $request->user()->team != 'OBS'
-            and $request->user()->team != 'DOL'
-        ) {
+        if ($request->user()->team != 'CC' 
+            and $request->user()->team != 'SP' 
+            and $request->user()->team != 'OBS' 
+            and $request->user()->team != 'DOL') {
             if ($request->get('job') != 'all' and $request->get('job') != 'closed') {
                 $jobs = $jobs->where('active_operator_team', $request->user()->team);
             }
         }
 
-        if ($request->user()->team == 'SP' && ($request->get('job') == 'active' || $request->get('job') == '')) {
+        if($request->user()->team == 'SP' && ($request->get('job') == 'active' || $request->get('job') == '')) {
             $jobs = $jobs->where('closed', false);
         }
 
         if ($request->user()->team == 'SCS') {
-            // $jobs = $jobs->whereHas('scsjob', function ($q) {
-            // });
+            $jobs = $jobs->whereHas('scsjob', function ($q) {
+            });
         }
 
         if ($request->get('from') and $request->get('to')) {
@@ -1717,6 +1601,7 @@ class JobController extends Controller
                         $query->where('closed', true)
                             ->where('last_operator_team', $request->get('team'));
                     }
+
                 })->orWhere(function ($query) use ($request) {
                     if (strpos($request->get('team'), '-')) {
                         $query->where('closed', false)
@@ -1784,7 +1669,6 @@ class JobController extends Controller
                 } else {
                     return false;
                 }
-                // return true;
             } catch (\Exception $e) {
                 if ($e->getMessage() == 'Trying to get property of non-object') {
                     return true;
@@ -1849,18 +1733,15 @@ class JobController extends Controller
     {
         if ($request->get('tier1_solve_result') == null) {
             return 'ต้องระบุผลการแก้ไข';
-        } elseif (
-            $request->get('tier1_solve_result') == '1'
+        } elseif ($request->get('tier1_solve_result') == '1'
             and $request->get('tier1_forward') !== null
         ) {
             return 'หากแก้ไขได้ ต้องไม่มีการส่งต่อ';
-        } elseif (
-            $request->get('tier1_solve_result') == '0'
+        } elseif ($request->get('tier1_solve_result') == '0'
             and $request->get('tier1_forward') == null
         ) {
             return 'หากแก้ไม่ได้ ต้องมีการส่งต่อ';
-        } elseif (
-            $request->get('tier1_forward') != 'SP'
+        } elseif ($request->get('tier1_forward') != 'SP'
             and $request->get('tier1_forward') != 'SA'
             and $request->get('tier1_forward') != 'NW'
             and $request->get('tier1_forward') != 'ST'
@@ -1879,8 +1760,6 @@ class JobController extends Controller
             return 'ต้องระบุหมายเลขอุปกรณ์';
         } elseif ($request->get('product') == null) {
             return 'ต้องระบุชนิดอุปกรณ์';
-        } elseif ($request->get('hw_search_result_val') == '0') {
-            return 'ไม่พบรายการอุปกรณ์ในระบบ';
         } else {
             return 'pass';
         }
@@ -1901,23 +1780,19 @@ class JobController extends Controller
 
     private function validateSP(Request $request)
     {
-        if (
-            $request->get('tier2_solve_result') == null
+        if ($request->get('tier2_solve_result') == null
             and $request->get('tier2_forward') !== null
         ) {
             return 'หากมีการส่งต่อ ต้องระบุผลการแก้ไข';
-        } elseif (
-            $request->get('tier2_solve_result') == '1'
+        } elseif ($request->get('tier2_solve_result') == '1'
             and $request->get('tier2_forward') !== null
         ) {
             return 'หากแก้ไขได้ ต้องไม่มีการส่งต่อ';
-        } elseif (
-            $request->get('tier2_solve_result') == '0'
+        } elseif ($request->get('tier2_solve_result') == '0'
             and $request->get('tier2_forward') == null
         ) {
             return 'หากแก้ไขไม่ได้ ต้องมีการส่งต่อ';
-        } elseif (
-            $request->get('tier2_forward') != 'SA'
+        } elseif ($request->get('tier2_forward') != 'SA'
             and $request->get('tier2_forward') != 'NW'
             and $request->get('tier2_forward') != 'ST'
             and $request->get('tier2_forward') != 'SCS'
@@ -1933,23 +1808,19 @@ class JobController extends Controller
 
     private function validateSANWST(Request $request)
     {
-        if (
-            $request->get('tier3_solve_result') == null
+        if ($request->get('tier3_solve_result') == null
             and $request->get('tier3_forward') !== null
         ) {
             return 'หากมีการส่งต่อ ต้องระบุผลการแก้ไข';
-        } elseif (
-            $request->get('tier3_solve_result') == '1'
+        } elseif ($request->get('tier3_solve_result') == '1'
             and $request->get('tier3_forward') !== null
         ) {
             return 'หากแก้ไขได้ ต้องไม่มีการส่งต่อ';
-        } elseif (
-            $request->get('tier3_solve_result') == '0'
+        } elseif ($request->get('tier3_solve_result') == '0'
             and $request->get('tier3_forward') == null
         ) {
             return 'หากแก้ไขไม่ได้ ต้องมีการส่งต่อ';
-        } elseif (
-            $request->get('tier3_forward') != 'SCS'
+        } elseif ($request->get('tier3_forward') != 'SCS'
             and $request->get('tier3_forward') !== null
         ) {
             return 'การส่งต่อมีแค่ SCS';
@@ -1973,7 +1844,7 @@ class JobController extends Controller
         } else {
             $job->informer_type = $request->get('informer_type');
         }
-
+        
         $job->sw_version = $request->get('sw_version');
         $job->description = $request->get('description');
 
@@ -1999,6 +1870,7 @@ class JobController extends Controller
             $job->cc_confirm_closed_dtm = DB::raw('DATE_ADD(NOW(), INTERVAL 7 HOUR)');
             $job->tier1_forward = null;
             $job->active_operator_team = null;
+
         } else {
             $job->closed = false;
             $job->closed_at = null;
@@ -2019,7 +1891,7 @@ class JobController extends Controller
 
         if ($department->phase == 1) {
             if ($request->get('primary_system_ph1')) {
-                $job->primary_system_id = $job->last_primary_system_id = $request->get('primary_system_ph1');
+               $job->primary_system_id = $job->last_primary_system_id = $request->get('primary_system_ph1');
             }
 
             if ($request->get('secondary_system_ph1')) {
@@ -2027,7 +1899,7 @@ class JobController extends Controller
             }
         } elseif ($department->phase == 2) {
             if ($request->get('primary_system_ph2')) {
-                $job->primary_system_id = $job->last_primary_system_id = $request->get('primary_system_ph2');
+               $job->primary_system_id = $job->last_primary_system_id = $request->get('primary_system_ph2');
             }
 
             if ($request->get('secondary_system_ph2')) {
@@ -2035,7 +1907,7 @@ class JobController extends Controller
             }
         } elseif ($department->phase == 3) {
             if ($request->get('primary_system_ph3')) {
-                $job->primary_system_id = $job->last_primary_system_id = $request->get('primary_system_ph3');
+               $job->primary_system_id = $job->last_primary_system_id = $request->get('primary_system_ph3');
             }
 
             if ($request->get('secondary_system_ph3')) {
@@ -2043,7 +1915,7 @@ class JobController extends Controller
             }
         } elseif ($department->phase == 4) {
             if ($request->get('primary_system_ph4')) {
-                $job->primary_system_id = $job->last_primary_system_id = $request->get('primary_system_ph4');
+               $job->primary_system_id = $job->last_primary_system_id = $request->get('primary_system_ph4');
             }
 
             if ($request->get('secondary_system_ph4')) {
@@ -2051,7 +1923,7 @@ class JobController extends Controller
             }
         } else {
             if ($request->get('primary_system')) {
-                $job->primary_system_id = $job->last_primary_system_id = $request->get('primary_system');
+               $job->primary_system_id = $job->last_primary_system_id = $request->get('primary_system');
             }
 
             if ($request->get('secondary_system')) {
@@ -2059,8 +1931,7 @@ class JobController extends Controller
             }
         }
 
-        if (
-            $request->get('informer_name') != '-'
+        if ($request->get('informer_name') != '-'
             and $request->get('informer_phone_number') != '-'
             and !strpos(strtoupper($request->get('informer_name')), 'LINE')
             and !strpos(strtoupper($request->get('informer_phone_number')), 'LINE')
@@ -2091,70 +1962,53 @@ class JobController extends Controller
             $scsjob = new ScsJob;
         }
         $scsjob->job_id = $job->id;
-        //serial_number is id
-        $hw = HardwareItem::where('serial_number', $request->get('serial_number'))->first();
-        if ($hw) {
-            //$scsjob->hw_id = $hw->serial_number;
-            $scsjob->serial_number = $hw->serial_number;
-            $scsjob->hw_id = $hw->id;
-
-        }
-       // $scsjob->hw_id = $request->get('serial_number');
+        $scsjob->serial_number = $request->get('serial_number');
         $scsjob->product = $request->get('product');
-        // $scsjob->serial_number = $request->get('serial_number');
         $scsjob->model_part_number = $request->get('model_part_number');
         $scsjob->malfunction = $request->get('malfunction');
         $scsjob->create_user_id = $request->user()->id;
 
-        // if ($job->phase == '1') {
-        //     $hw = Ph1HardwareItem::where('serial_number', $request->get('serial_number'))->first();
-        //     if ($hw) {
-        //         $scsjob->hw_ph1_id = $hw->id;
-        //     }
-        // } elseif ($job->phase == '2') {
-        //     $hw = Ph2HardwareItem::where('serial_number', $request->get('serial_number'))->first();
-        //     if ($hw) {
-        //         $scsjob->hw_ph2_id = $hw->id;
-        //     }
-        // }
-
-
+        if ($job->phase == '1') {
+            $hw = Ph1HardwareItem::where('serial_number', $request->get('serial_number'))->first();
+            if ($hw) {
+                $scsjob->hw_ph1_id = $hw->id;
+            }
+        } elseif ($job->phase == '2') {
+            $hw = Ph2HardwareItem::where('serial_number', $request->get('serial_number'))->first();
+            if ($hw) {
+                $scsjob->hw_ph2_id = $hw->id;
+            }
+        }
 
         $scsjob->save();
 
         // send mail
-        // $filename = 'Open ' . date('Y-m-d') . '_' . $job->ticket_no . '_' . $job->department->name;
+        $filename = 'Open ' . date('Y-m-d') . '_' . $job->ticket_no . '_' . $job->department->name;
 
-        // Excel::create($filename, function ($excel) use ($job, $scsjob) {
-        //     $excel->sheet('Sheet1', function ($sheet) use ($job, $scsjob) {
-        //         $sheet->loadView('scs_job.excel', [
-        //             'job' => $job,
-        //             'scs' => $scsjob,
-        //         ]);
-        //     });
-        // })->store('xlsx', storage_path('excel/exports'));
+        Excel::create($filename, function ($excel) use ($job, $scsjob) {
+            $excel->sheet('Sheet1', function ($sheet) use ($job, $scsjob) {
+                $sheet->loadView('scs_job.excel', [
+                    'job' => $job,
+                    'scs' => $scsjob,
+                ]);
+            });
+        })->store('xlsx', storage_path('excel/exports'));
 
-        // if (strpos($request->user()->email, '@calllog.samart.online')) {
-        //     Mail::send('scs_job.mail', [], function ($m) use ($request, $filename, $job) {
-        //         $m->subject($filename);
-        //         $m->to('pkxiii@gmail.com', 'pkxiii@gmail.com');
-        //         $m->attach(storage_path('excel/exports') . '/' . $filename . '.xlsx');
-        //     });
-        // } else {
-        //     Mail::send('scs_job.mail', [], function ($m) use ($request, $filename, $job) {
-        //         $m->subject($filename);
-        //         $m->to('noc@samtel.samartcorp.com', 'noc@samtel.samartcorp.com');
-        //         $m->to('Helpdesk.dol57@yahoo.co.th', 'Helpdesk.dol57@yahoo.co.th');
-        //         $m->cc('suntachotpop@gmail.com', 'suntachotpop@gmail.com');
-        //         $m->attach(storage_path('excel/exports') . '/' . $filename . '.xlsx');
-        //     });
-        // }
-
-        // if ($request->get('tier1_forward') == 'SCS') {
-        //     $job->active_operator_team = 'CC';
-        // } else {
-        //     $job->active_operator_team = $request->get('tier1_forward');
-        // }
+        if (strpos($request->user()->email, '@calllog.samart.online')) {
+            Mail::send('scs_job.mail', [], function ($m) use ($request, $filename, $job) {
+                $m->subject($filename);
+                $m->to('pkxiii@gmail.com', 'pkxiii@gmail.com');
+                $m->attach(storage_path('excel/exports') . '/' . $filename . '.xlsx');
+            });
+        } else {
+            Mail::send('scs_job.mail', [], function ($m) use ($request, $filename, $job) {
+                $m->subject($filename);
+                $m->to('noc@samtel.samartcorp.com', 'noc@samtel.samartcorp.com');
+                $m->to('Helpdesk.dol57@yahoo.co.th', 'Helpdesk.dol57@yahoo.co.th');
+                $m->cc('suntachotpop@gmail.com', 'suntachotpop@gmail.com');
+                $m->attach(storage_path('excel/exports') . '/' . $filename . '.xlsx');
+            });
+        }
 
         $job->active_operator_team = 'SCS';
         $job->active_operator_id = null;
@@ -2167,8 +2021,7 @@ class JobController extends Controller
         $job->tier2_solve_description = $request->get('tier2_solve_description');
         $job->remark = $request->get('remark');
 
-        if (
-            $request->get('tier2_solve_result') == null
+        if ($request->get('tier2_solve_result') == null
             and $request->get('tier2_forward') == null
         ) {
             $job->tier2_solve_result = null;
@@ -2213,20 +2066,6 @@ class JobController extends Controller
             if ($request->get('secondary_system')) {
                 $job->secondary_system_id = $job->last_secondary_system_id = $request->get('secondary_system');
             }
-
-            //save description
-            $solveDesc = SolveDescription::where('phase', $job->phase)
-            ->where('tier', '2')
-            ->where('description', $request->get('tier2_solve_description'))
-            ->first();
-
-            if (!$solveDesc) {
-                $solveDescription = new SolveDescription;
-                $solveDescription->description = preg_replace("/\r|\n/", "", $request->get('tier2_solve_description'));
-                $solveDescription->phase = $job->phase;
-                $solveDescription->tier = '2';
-                $solveDescription->save();
-            }
         }
 
         return $job;
@@ -2234,8 +2073,7 @@ class JobController extends Controller
 
     private function saveDataSA($request, $job)
     {
-        if (
-            $request->get('tier3_solve_result') == null
+        if ($request->get('tier3_solve_result') == null
             and $request->get('tier3_forward') == null
         ) {
             $job->tier3_solve_description = $request->get('tier3_solve_description');
@@ -2279,8 +2117,7 @@ class JobController extends Controller
 
     private function saveDataNWST($request, $job)
     {
-        if (
-            $request->get('tier3_solve_result') == null
+        if ($request->get('tier3_solve_result') == null
             and $request->get('tier3_forward') == null
         ) {
             $job->tier3_solve_description = $request->get('tier3_solve_description');
@@ -2340,33 +2177,33 @@ class JobController extends Controller
         $job->scs_solve_result_dtm = DB::raw('DATE_ADD(NOW(), INTERVAL 7 HOUR)');
 
         // send mail
-        // $filename = 'Close ' . date('Y-m-d') . '_' . $job->ticket_no . '_' . $job->department->name;
+        $filename = 'Close ' . date('Y-m-d') . '_' . $job->ticket_no . '_' . $job->department->name;
 
-        // Excel::create($filename, function ($excel) use ($job, $scsjob) {
-        //     $excel->sheet('Sheet1', function ($sheet) use ($job, $scsjob) {
-        //         $sheet->loadView('scs_job.excel', [
-        //             'job' => $job,
-        //             'scs' => $scsjob,
-        //         ]);
-        //     });
-        // })->store('xlsx', storage_path('excel/exports'));
+        Excel::create($filename, function ($excel) use ($job, $scsjob) {
+            $excel->sheet('Sheet1', function ($sheet) use ($job, $scsjob) {
+                $sheet->loadView('scs_job.excel', [
+                    'job' => $job,
+                    'scs' => $scsjob,
+                ]);
+            });
+        })->store('xlsx', storage_path('excel/exports'));
 
-        // if (strpos($request->user()->email, '@calllog.samart.online')) {
-        //     Mail::send('scs_job.mail', [], function ($m) use ($request, $filename, $job) {
-        //         $m->subject($filename);
-        //         $m->to('pkxiii@gmail.com', 'pkxiii@gmail.com');
-        //         $m->attach(storage_path('excel/exports') . '/' . $filename . '.xlsx');
-        //     });
-        // } else {
-        //     Mail::send('scs_job.mail', [], function ($m) use ($request, $filename, $job) {
-        //         $m->subject($filename);
-        //         $m->to('noc@samtel.samartcorp.com', 'noc@samtel.samartcorp.com');
-        //         $m->to('Helpdesk.dol57@yahoo.co.th', 'Helpdesk.dol57@yahoo.co.th');
-        //         $m->cc('suntachotpop@gmail.com', 'suntachotpop@gmail.com');
-        //         $m->cc('chatchai.k@samtel.samartcorp.com', 'chatchai.k@samtel.samartcorp.com');
-        //         $m->attach(storage_path('excel/exports') . '/' . $filename . '.xlsx');
-        //     });
-        // }
+        if (strpos($request->user()->email, '@calllog.samart.online')) {
+            Mail::send('scs_job.mail', [], function ($m) use ($request, $filename, $job) {
+                $m->subject($filename);
+                $m->to('pkxiii@gmail.com', 'pkxiii@gmail.com');
+                $m->attach(storage_path('excel/exports') . '/' . $filename . '.xlsx');
+            });
+        } else {
+            Mail::send('scs_job.mail', [], function ($m) use ($request, $filename, $job) {
+                $m->subject($filename);
+                $m->to('noc@samtel.samartcorp.com', 'noc@samtel.samartcorp.com');
+                $m->to('Helpdesk.dol57@yahoo.co.th', 'Helpdesk.dol57@yahoo.co.th');
+                $m->cc('suntachotpop@gmail.com', 'suntachotpop@gmail.com');
+                $m->cc('chatchai.k@samtel.samartcorp.com', 'chatchai.k@samtel.samartcorp.com');
+                $m->attach(storage_path('excel/exports') . '/' . $filename . '.xlsx');
+            });
+        }
 
         return $job;
     }
@@ -2397,7 +2234,7 @@ class JobController extends Controller
             $job->sa_rw_call_category_id = null;
             $job->last_call_category_id = $job->call_category_id;
             $job->sa_rw_primary_system_id = null;
-            $job->last_primary_system_id = $job->primary_system_id;
+            $job->last_primary_system_id= $job->primary_system_id;
             $job->sa_rw_secondary_system_id = null;
             $job->last_secondary_system_id = $job->secondary_system_id;
             $job->sa_rw_return_job = null;

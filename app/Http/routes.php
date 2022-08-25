@@ -119,4 +119,6 @@ Route::group(['middleware' => 'web'], function () {
 	Route::get('/onsite/export', 'OnSiteController@export2');
 
 	Route::get('/onsite_al','OnSiteAlController@index');
+
+	Route::get('/onsite_hw','OnSiteHwController@index');
 });
